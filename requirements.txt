@@ -1,0 +1,7 @@
+gym
+gym[atari]
+torch
+torchvision
+tensorflow
+tensorboardX
+opencv-python
