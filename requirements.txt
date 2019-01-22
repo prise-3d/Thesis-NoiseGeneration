@@ -1,7 +1,9 @@
 gym
-gym[atari]
+atari_py
 torch
 torchvision
 tensorflow
 tensorboardX
 opencv-python
+ipfml
+Pillow

@@ -1,3 +1,6 @@
 runs
 .python-version
 .ipynb_checkpoints
+
+# do not track blocks images
+synthesis_images/generated_blocks

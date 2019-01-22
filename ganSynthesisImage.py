@@ -2,11 +2,13 @@
 import random
 import argparse
 import cv2
+import os
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from tensorboardX import SummaryWriter
+from PIL import Image
 
 import torchvision.utils as vutils
 
@@ -25,32 +27,14 @@ BATCH_SIZE = 16
 
 # dimension input image will be rescaled
 IMAGE_SIZE = 64
+input_shape = (3, IMAGE_SIZE, IMAGE_SIZE)
 
 LEARNING_RATE = 0.0001
-REPORT_EVERY_ITER = 100
+REPORT_EVERY_ITER = 50
 SAVE_IMAGE_EVERY_ITER = 200
+MAX_ITERATION = 100000
 
-
-class InputWrapper(gym.ObservationWrapper):
-    """
-    Preprocessing of input numpy array:
-    1. resize image into predefined size
-    2. move color channel axis to a first place
-    """
-    def __init__(self, *args):
-        super(InputWrapper, self).__init__(*args)
-        assert isinstance(self.observation_space, gym.spaces.Box)
-        old_space = self.observation_space
-        self.observation_space = gym.spaces.Box(self.observation(old_space.low), self.observation(old_space.high),
-                                                dtype=np.float32)
-
-    def observation(self, observation):
-        # resize image
-        new_obs = cv2.resize(observation, (IMAGE_SIZE, IMAGE_SIZE))
-        # transform (210, 160, 3) -> (3, 210, 160)
-        new_obs = np.moveaxis(new_obs, 2, 0)
-        return new_obs.astype(np.float32)
-
+data_folder = 'synthesis_images/generated_blocks'
 
 class Discriminator(nn.Module):
     def __init__(self, input_shape):
@@ -112,22 +96,29 @@ class Generator(nn.Module):
         return self.pipe(x)
 
 # here we have to generate our batches from final or noisy synthesis images
-def iterate_batches(envs, batch_size=BATCH_SIZE):
-    batch = [e.reset() for e in envs]
-    env_gen = iter(lambda: random.choice(envs), None)
+def iterate_batches(batch_size=BATCH_SIZE):
+
+    batch = []
+    images = os.listdir(data_folder)
+    nb_images = len(images)
 
     while True:
-        e = next(env_gen)
-        obs, reward, is_done, _ = e.step(e.action_space.sample())
-        if np.mean(obs) > 0.01:
-            batch.append(obs)
+        i = random.randint(0, nb_images - 1)
+
+        img = Image.open(os.path.join(data_folder, images[i]))
+        img_arr = np.asarray(img)
+
+        new_obs = cv2.resize(img_arr, (IMAGE_SIZE, IMAGE_SIZE))
+        # transform (210, 160, 3) -> (3, 210, 160)
+        new_obs = np.moveaxis(new_obs, 2, 0)
+
+        batch.append(new_obs)
+
         if len(batch) == batch_size:
             # Normalising input between -1 to 1
             batch_np = np.array(batch, dtype=np.float32) * 2.0 / 255.0 - 1.0
             yield torch.tensor(batch_np)
             batch.clear()
-        if is_done:
-            e.reset()
 
 
 if __name__ == "__main__":
@@ -136,8 +127,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     device = torch.device("cuda" if args.cuda else "cpu")
-    envs = [InputWrapper(gym.make(name)) for name in ('Breakout-v0', 'AirRaid-v0', 'Pong-v0')]
-    input_shape = envs[0].observation_space.shape
+    #envs = [InputWrapper(gym.make(name)) for name in ('Breakout-v0', 'AirRaid-v0', 'Pong-v0')]
 
     print(input_shape)
     net_discr = Discriminator(input_shape=input_shape).to(device)
@@ -156,9 +146,12 @@ if __name__ == "__main__":
     true_labels_v = torch.ones(BATCH_SIZE, dtype=torch.float32, device=device)
     fake_labels_v = torch.zeros(BATCH_SIZE, dtype=torch.float32, device=device)
 
-    for batch_v in iterate_batches(envs):
+    for batch_v in iterate_batches():
+
         # generate extra fake samples, input is 4D: batch, filters, x, y
         gen_input_v = torch.FloatTensor(BATCH_SIZE, LATENT_VECTOR_SIZE, 1, 1).normal_(0, 1).to(device)
+
+        # There we get data
         batch_v = batch_v.to(device)
         gen_output_v = net_gener(gen_input_v)
 
@@ -187,5 +180,5 @@ if __name__ == "__main__":
             gen_losses = []
             dis_losses = []
         if iter_no % SAVE_IMAGE_EVERY_ITER == 0:
-            writer.add_image("fake", vutils.make_grid(gen_output_v.data[:64], normalize=True), iter_no)
-            writer.add_image("real", vutils.make_grid(batch_v.data[:64], normalize=True), iter_no)
+            writer.add_image("fake", vutils.make_grid(gen_output_v.data[:IMAGE_SIZE], normalize=True), iter_no)
+            writer.add_image("real", vutils.make_grid(batch_v.data[:IMAGE_SIZE], normalize=True), iter_no)
