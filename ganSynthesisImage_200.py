@@ -21,12 +21,12 @@ log = gym.logger
 log.set_level(gym.logger.INFO)
 
 LATENT_VECTOR_SIZE = 100
-DISCR_FILTERS = 64
-GENER_FILTERS = 64
+DISCR_FILTERS = 200
+GENER_FILTERS = 200
 BATCH_SIZE = 16
 
 # dimension input image will be rescaled
-IMAGE_SIZE = 64
+IMAGE_SIZE = 200
 input_shape = (3, IMAGE_SIZE, IMAGE_SIZE)
 
 LEARNING_RATE = 0.0001
@@ -35,7 +35,6 @@ SAVE_IMAGE_EVERY_ITER = 200
 MAX_ITERATION = 100000
 
 data_folder = 'synthesis_images/generated_blocks'
-models_folder = 'saved_models'
 
 class Discriminator(nn.Module):
     def __init__(self, input_shape):
@@ -64,6 +63,7 @@ class Discriminator(nn.Module):
 
     def forward(self, x):
         conv_out = self.conv_pipe(x)
+        print(conv_out.view(-1, 1).squeeze(dim=1).shape)
         return conv_out.view(-1, 1).squeeze(dim=1)
 
 
@@ -72,11 +72,11 @@ class Generator(nn.Module):
         super(Generator, self).__init__()
         # pipe deconvolves input vector into (3, 64, 64) image
         self.pipe = nn.Sequential(
-            nn.ConvTranspose2d(in_channels=LATENT_VECTOR_SIZE, out_channels=GENER_FILTERS * 8,
+            nn.ConvTranspose2d(in_channels=LATENT_VECTOR_SIZE, out_channels=GENER_FILTERS * 6,
                                kernel_size=4, stride=1, padding=0),
-            nn.BatchNorm2d(GENER_FILTERS * 8),
+            nn.BatchNorm2d(GENER_FILTERS * 6),
             nn.ReLU(),
-            nn.ConvTranspose2d(in_channels=GENER_FILTERS * 8, out_channels=GENER_FILTERS * 4,
+            nn.ConvTranspose2d(in_channels=GENER_FILTERS * 6, out_channels=GENER_FILTERS * 4,
                                kernel_size=4, stride=2, padding=1),
             nn.BatchNorm2d(GENER_FILTERS * 4),
             nn.ReLU(),
@@ -133,6 +133,7 @@ if __name__ == "__main__":
     print(input_shape)
     net_discr = Discriminator(input_shape=input_shape).to(device)
     net_gener = Generator(output_shape=input_shape).to(device)
+    print(net_discr)
     print(net_gener)
 
     objective = nn.BCELoss()
@@ -159,7 +160,9 @@ if __name__ == "__main__":
         # train discriminator
         dis_optimizer.zero_grad()
         dis_output_true_v = net_discr(batch_v)
+        print(len(dis_output_true_v))
         dis_output_fake_v = net_discr(gen_output_v.detach())
+        print(len(dis_output_true_v))
         dis_loss = objective(dis_output_true_v, true_labels_v) + objective(dis_output_fake_v, fake_labels_v)
         dis_loss.backward()
         dis_optimizer.step()
@@ -183,11 +186,3 @@ if __name__ == "__main__":
         if iter_no % SAVE_IMAGE_EVERY_ITER == 0:
             writer.add_image("fake", vutils.make_grid(gen_output_v.data[:IMAGE_SIZE], normalize=True), iter_no)
             writer.add_image("real", vutils.make_grid(batch_v.data[:IMAGE_SIZE], normalize=True), iter_no)
-
-        if iter_no >= MAX_ITERATION:
-            # end of train
-            break
-
-    # now save these two models
-    torch.save(net_discr.state_dict(), os.path.join(models_folder, 'net_discr_model.pt'))
-    torch.save(net_gener.state_dict(), os.path.join(models_folder, 'net_gener_model.pt'))

@@ -4,3 +4,4 @@ runs
 
 # do not track blocks images
 synthesis_images/generated_blocks
+saved_models
