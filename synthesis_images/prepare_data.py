@@ -21,7 +21,7 @@ for img_path in images:
 
     img = Image.open(os.path.join(images_folder, img_path))
 
-    blocks = processing.divide_in_blocks(img, (200, 200), pil=True)
+    blocks = processing.divide_in_blocks(img, (80, 80), pil=True)
 
     for id, pil_block in enumerate(blocks):
         img_name = img_path.split('/')[-1]
